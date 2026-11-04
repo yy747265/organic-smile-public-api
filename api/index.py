@@ -1,4 +1,5 @@
 import os
+from typing import Any, List
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from motor.motor_asyncio import AsyncIOMotorClient
@@ -20,55 +21,58 @@ db = client.organic_smile
 
 
 class Product(BaseModel):
-    name: str
-    description: str = ""
-    category: str
-    sizes: list
-    images: list
-    isActive: bool = True
+  name: str
+  description: str = ""
+  category: str
+  sizes: List[Any] = []
+  images: List[str] = []
+  isActive: bool = True
 
 
 @app.get("/")
 def read_root():
-    return {"status": "Public API is running"}
+  return {"status": "Public API is running"}
 
 
-# مسار جلب المنتجات للمتجر
+# مسارات المنتجات
 @app.get("/api/products")
 async def get_products():
-    try:
-        products = []
-        cursor = db.products.find({})
-        async for document in cursor:
-            document["_id"] = str(document["_id"])
-            products.append(document)
-        return products
-    except Exception as e:
-        return {"error": str(e)}
+  try:
+    products = []
+    cursor = db.products.find({})
+    async for document in cursor:
+      document["_id"] = str(document["_id"])
+      products.append(document)
+    return products
+  except Exception as e:
+    return {"error": str(e)}
 
 
-# مسارات التحكم للأدمن أونلاين
+# مسارات الأدمن
 @app.get("/admin/products")
 async def get_admin_products():
-    try:
-        products = []
-        cursor = db.products.find({}, {"_id": 0})
-        async for document in cursor:
-            products.append(document)
-        return products
-    except Exception as e:
-        return {"error": str(e)}
+  try:
+    products = []
+    cursor = db.products.find({}, {"_id": 0})
+    async for document in cursor:
+      products.append(document)
+    return products
+  except Exception as e:
+    return {"error": str(e)}
 
 
 @app.post("/admin/products")
 async def add_admin_product(product: Product):
+  try:
     await db.products.insert_one(product.dict())
     return {"message": "Product added successfully"}
+  except Exception as e:
+    return {"error": str(e)}
 
 
 @app.delete("/admin/products/{product_name}")
 async def delete_admin_product(product_name: str):
-    result = await db.products.delete_one({"name": product_name})
-    if result.deleted_count == 1:
-        return {"message": "Product deleted successfully"}
-    return {"message": "Product not found"}
+  result = await db.products.delete_one({"name": product_name})
+  if result.deleted_count == 1:
+    return {"message": "Product deleted successfully"}
+  return {"message": "Product not found"}
