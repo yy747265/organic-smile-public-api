@@ -34,7 +34,7 @@ def read_root():
   return {"status": "Public API is running"}
 
 
-# مسارات المنتجات
+# جلب كافة المنتجات للبابلك
 @app.get("/api/products")
 async def get_products():
   try:
