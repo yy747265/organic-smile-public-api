@@ -1,12 +1,15 @@
 import os
-from typing import Any, List
-from fastapi import FastAPI
+from dotenv import load_dotenv
+from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
-from motor.motor_asyncio import AsyncIOMotorClient
 from pydantic import BaseModel
+from pymongo import MongoClient
+
+load_dotenv()
 
 app = FastAPI()
 
+# إعدادات CORS للسماح بالاتصال من أي Frontend
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -15,64 +18,90 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-MONGO_URI = os.getenv("MONGODB_URI")
-client = AsyncIOMotorClient(MONGO_URI)
+# الاتصال بقاعدة البيانات MongoDB
+MONGO_URI = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
+client = MongoClient(MONGO_URI)
 db = client.organic_smile
+products_collection = db.products
+settings_collection = db.settings
 
+
+# --- Pydantic Schemas ---
+class Size(BaseModel):
+    size: str
+    size_en: str = ""
+    price: float = None
 
 class Product(BaseModel):
-  name: str
-  description: str = ""
-  category: str
-  sizes: List[Any] = []
-  images: List[str] = []
-  isActive: bool = True
+    name: str
+    name_en: str = ""
+    description: str = ""
+    description_en: str = ""
+    category: str
+    sizes: list[Size] = []
+    images: list[str] = []
+    isActive: bool = True
+
+class Settings(BaseModel):
+    hero_title: str = ""
+    hero_title_en: str = ""
+    hero_main_img: str = ""
+    hero_title_img: str = ""
+    custom_offers: list[str] = []
+    custom_offers_en: list[str] = []
 
 
+# --- Root Check ---
 @app.get("/")
 def read_root():
-  return {"status": "Public API is running"}
+    return {"status": "ok", "message": "Organic Smile API is running"}
 
 
-# جلب كافة المنتجات للبابلك
+# --- Public & Settings Endpoints ---
 @app.get("/api/products")
-async def get_products():
-  try:
-    products = []
-    cursor = db.products.find({})
-    async for document in cursor:
-      document["_id"] = str(document["_id"])
-      products.append(document)
-    return products
-  except Exception as e:
-    return {"error": str(e)}
+def get_public_products():
+    return list(products_collection.find({"isActive": True}, {"_id": 0}))
+
+@app.get("/api/settings")
+def get_settings():
+    settings = settings_collection.find_one({}, {"_id": 0})
+    if not settings:
+        return {
+            "hero_title": "",
+            "hero_title_en": "",
+            "hero_main_img": "",
+            "hero_title_img": "",
+            "custom_offers": [],
+            "custom_offers_en": []
+        }
+    return settings
+
+@app.put("/api/settings")
+def update_settings(settings: Settings):
+    settings_collection.replace_one({}, settings.dict(), upsert=True)
+    return {"message": "تم حفظ الإعدادات بنجاح"}
 
 
-# مسارات الأدمن
+# --- Admin Endpoints ---
 @app.get("/admin/products")
-async def get_admin_products():
-  try:
-    products = []
-    cursor = db.products.find({}, {"_id": 0})
-    async for document in cursor:
-      products.append(document)
-    return products
-  except Exception as e:
-    return {"error": str(e)}
-
+def get_all_products():
+    return list(products_collection.find({}, {"_id": 0}))
 
 @app.post("/admin/products")
-async def add_admin_product(product: Product):
-  try:
-    await db.products.insert_one(product.dict())
-    return {"message": "Product added successfully"}
-  except Exception as e:
-    return {"error": str(e)}
+def add_product(product: Product):
+    products_collection.insert_one(product.dict())
+    return {"message": "تم إضافة المنتج بنجاح"}
 
+@app.put("/admin/products/{product_name}")
+def update_product(product_name: str, product: Product):
+    result = products_collection.replace_one({"name": product_name}, product.dict())
+    if result.matched_count == 0:
+        raise HTTPException(status_code=404, detail="المنتج غير موجود")
+    return {"message": "تم تحديث المنتج بنجاح"}
 
 @app.delete("/admin/products/{product_name}")
-async def delete_admin_product(product_name: str):
-  result = await db.products.delete_one({"name": product_name})
-  if result.deleted_count == 1:
-    return {"message": "Product deleted successfully"}
-  return {"message": "Product not found"}
+def delete_product(product_name: str):
+    result = products_collection.delete_one({"name": product_name})
+    if result.deleted_count == 1:
+        return {"message": "تم حذف المنتج بنجاح"}
+    raise HTTPException(status_code=404, detail="المنتج غير موجود")
