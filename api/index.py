@@ -9,16 +9,17 @@ load_dotenv()
 
 app = FastAPI()
 
-# إعدادات CORS للسماح بالاتصال من أي Frontend
+# إعدادات CORS الشاملة لمنع حظر الطلبات
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
+    expose_headers=["*"]
 )
 
-# الاتصال بقاعدة البيانات MongoDB
+# الاتصال بقاعدة البيانات
 MONGO_URI = os.getenv("MONGO_URI") or os.getenv("MONGODB_URI")
 client = MongoClient(MONGO_URI)
 db = client.organic_smile
@@ -51,13 +52,11 @@ class Settings(BaseModel):
     custom_offers_en: list[str] = []
 
 
-# --- Root Check ---
+# --- Endpoints ---
 @app.get("/")
 def read_root():
     return {"status": "ok", "message": "Organic Smile API is running"}
 
-
-# --- Public & Settings Endpoints ---
 @app.get("/api/products")
 def get_public_products():
     return list(products_collection.find({"isActive": True}, {"_id": 0}))
@@ -81,8 +80,6 @@ def update_settings(settings: Settings):
     settings_collection.replace_one({}, settings.dict(), upsert=True)
     return {"message": "تم حفظ الإعدادات بنجاح"}
 
-
-# --- Admin Endpoints ---
 @app.get("/admin/products")
 def get_all_products():
     return list(products_collection.find({}, {"_id": 0}))
